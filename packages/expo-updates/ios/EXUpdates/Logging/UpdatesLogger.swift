@@ -116,50 +116,6 @@ public final class UpdatesLogger: NSObject {
     info(message: message, code: .none)
   }
 
-  func warn(
-    message: String,
-    code: UpdatesErrorCode = .none,
-    updateId: String?,
-    assetId: String?
-  ) {
-    let entry = logEntryString(
-      message: message, code: code, level: .warn,
-      duration: nil, updateId: updateId, assetId: assetId
-    )
-    logger.warn(entry)
-  }
-
-  func warn(
-    message: String,
-    code: UpdatesErrorCode = .none
-  ) {
-    warn(message: message, code: code, updateId: nil, assetId: nil)
-  }
-
-  func warn(message: String) {
-    warn(message: message, code: .none)
-  }
-
-  func error(
-    cause: UpdatesError,
-    code: UpdatesErrorCode = .none,
-    updateId: String?,
-    assetId: String?
-  ) {
-    let entry = logEntryString(
-      message: cause.localizedDescription, code: code, level: .error,
-      duration: nil, updateId: updateId, assetId: assetId
-    )
-    logger.error(entry)
-  }
-
-  func error(
-    cause: UpdatesError,
-    code: UpdatesErrorCode = .none
-  ) {
-    error(cause: cause, code: code, updateId: nil, assetId: nil)
-  }
-
   // MARK: - Logging by message key
 
   /**
@@ -197,7 +153,8 @@ public final class UpdatesLogger: NSObject {
    Logs a failed update load with `unreachable` when the device could not reach the server, and
    with `failed` for any other failure. When assets of the update failed to load, logs one error
    for each group of asset failures with the same key and HTTP status instead, so that one kind of
-   failure does not hide another.
+   failure does not hide another. A code signing failure is not logged again: the file downloader
+   logs it as `systemCodeSigningVerificationFailed`.
    */
   func errorForLoadFailure(
     _ error: Error,
@@ -205,6 +162,9 @@ public final class UpdatesLogger: NSObject {
     unreachable: UpdatesLogMessage,
     updateId: String? = nil
   ) {
+    if isCodeSigningFailure(error) {
+      return
+    }
     guard let failures = assetLoadFailures(in: error) else {
       self.error(
         UpdatesLogMessage.forLoadFailure(error, failed: failed, unreachable: unreachable),
@@ -249,6 +209,22 @@ public final class UpdatesLogger: NSObject {
     return result + rest
   }
 
+  private func isCodeSigningFailure(_ error: Error) -> Bool {
+    var current: Error? = error
+    while let error = current {
+      switch error as? UpdatesError {
+      case .fileDownloaderCodeSigningError?,
+        .fileDownloaderCodeSigningUnknownError?,
+        .fileDownloaderCodeSigningIncorrectSignature?,
+        .fileDownloaderCodeSigningCertificateScopeKeyOrProjectIdMismatch?:
+        return true
+      default:
+        current = (error as? UpdatesError)?.cause
+      }
+    }
+    return false
+  }
+
   private func assetLoadFailures(in error: Error) -> [AssetLoadFailure]? {
     var current: Error? = error
     while let error = current {
@@ -258,26 +234,6 @@ public final class UpdatesLogger: NSObject {
       current = (error as? UpdatesError)?.cause
     }
     return nil
-  }
-
-  func fatal(
-    cause: UpdatesError,
-    code: UpdatesErrorCode = .none,
-    updateId: String?,
-    assetId: String?
-  ) {
-    let entry = logEntryString(
-      message: cause.localizedDescription, code: code, level: .fatal,
-      duration: nil, updateId: updateId, assetId: assetId
-    )
-    logger.fatal(entry)
-  }
-
-  func fatal(
-    cause: UpdatesError,
-    code: UpdatesErrorCode = .none
-  ) {
-    fatal(cause: cause, code: code, updateId: nil, assetId: nil)
   }
 
   func startTimer(label: String) -> LoggerTimer {

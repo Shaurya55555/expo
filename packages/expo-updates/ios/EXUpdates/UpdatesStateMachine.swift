@@ -454,10 +454,13 @@ internal class UpdatesStateMachine {
    traps, so an invalid transition fails an E2E run instead of passing unnoticed.
    */
   private func reportDroppedEvent(_ event: UpdatesStateEvent) {
-    let message = droppedEventWarning(event)
-    logger.warn(message: message)
+    var values = ["state": "\(state)", "event": "\(event.type)"]
+    if let error = event.errorMessage {
+      values["error"] = error
+    }
+    logger.warn(.systemStateMachineEventDropped, values: values)
     #if EX_UPDATES_ASSERT_INVALID_STATE
-    preconditionFailure(message)
+    preconditionFailure(droppedEventWarning(event))
     #endif
   }
 

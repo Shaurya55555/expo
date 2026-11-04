@@ -1,5 +1,11 @@
 # Changelog
 
+## 58.0.31
+
+### Patch Changes
+
+- [iOS] Fix React Native content in a SwiftUI `List` row going blank. When SwiftUI builds more than one instance of a row, the instance it displays now holds the hosted view. ([#52910](https://github.com/expo/expo/pull/52910) by [@intergalacticspacehighway](https://github.com/intergalacticspacehighway))
+
 ## 58.0.30
 
 ### Patch Changes

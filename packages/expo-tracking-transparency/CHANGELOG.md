@@ -1,5 +1,11 @@
 # Changelog
 
+## 58.0.3
+
+### Patch Changes
+
+- [Web] Fix `Cannot find native module 'ExpoTrackingTransparency'` when the package is imported on web. `isAvailable()` now returns `false` on web. ([#52964](https://github.com/expo/expo/pull/52964) by [@chrfalch](https://github.com/chrfalch))
+
 ## 58.0.2
 
 ### Patch Changes

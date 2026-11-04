@@ -1,5 +1,14 @@
 # Changelog
 
+## 58.0.28
+
+### Patch Changes
+
+- [Android] Add an `anchorPosition` prop to `DropdownMenuPopup`. ([#52884](https://github.com/expo/expo/pull/52884) by [@intergalacticspacehighway](https://github.com/intergalacticspacehighway))
+- [Android] Add the `scrollDismissesKeyboard` modifier to Jetpack Compose. ([#52844](https://github.com/expo/expo/pull/52844) by [@jgreuter-ferchau](https://github.com/jgreuter-ferchau))
+- [iOS] Remove the `Form` and `List` content-margin workaround for a split view beside the iPhone Duo tab rail. iOS 27.1 fixes the underlying SwiftUI issue. ([#52616](https://github.com/expo/expo/pull/52616) by [@huntie](https://github.com/huntie))
+- [iOS] Fix the content of `RNHostView` snapping to its final size during an animated SwiftUI resize, such as a frame whose width animates. The hosted tree now follows the animation frame by frame. ([#52402](https://github.com/expo/expo/pull/52402) by [@dileepapeiris](https://github.com/dileepapeiris))
+
 ## 58.0.27
 
 ### Patch Changes

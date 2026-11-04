@@ -1,5 +1,22 @@
 # Changelog
 
+## 58.0.24
+
+### Patch Changes
+
+- Updated dependencies. ([#52796](https://github.com/expo/expo/pull/52796), [#52747](https://github.com/expo/expo/pull/52747), [#52745](https://github.com/expo/expo/pull/52745), [#52932](https://github.com/expo/expo/pull/52932), [#52934](https://github.com/expo/expo/pull/52934), [#52750](https://github.com/expo/expo/pull/52750), [#52910](https://github.com/expo/expo/pull/52910))
+  - @expo/cli@58.1.20
+  - @expo/config@58.0.12
+  - @expo/config-plugins@58.0.13
+  - @expo/fingerprint@0.21.10
+  - @expo/metro-config@58.0.22
+  - expo-modules-core@58.0.31
+  - expo-constants@58.0.16
+  - expo-modules-autolinking@58.0.18
+  - @expo/local-build-cache-provider@58.0.12
+  - babel-preset-expo@58.0.25
+  - expo-asset@58.0.21
+
 ## 58.0.23
 
 ### Patch Changes

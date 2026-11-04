@@ -199,6 +199,15 @@ export type UpdatesLogEntry = {
    * If present, an Android or iOS native stack trace associated with this log entry.
    */
   stacktrace?: string[];
+  /**
+   * The key of the event that a warning or error entry logs. The key stays the same when the text of
+   * the message changes, so it can be used to filter or group entries.
+   */
+  key?: UpdatesLogMessageKey;
+  /**
+   * The values that fill the message template of the key, such as `cause` or `assetKey`.
+   */
+  values?: Record<string, string>;
 };
 
 /**

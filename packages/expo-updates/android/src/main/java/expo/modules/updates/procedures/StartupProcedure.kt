@@ -83,7 +83,7 @@ class StartupProcedure(
     logger,
     object : LoaderTask.LoaderTaskCallback {
       override fun onFailure(e: Exception) {
-        logger.error("UpdatesController loaderTask onFailure", e, UpdatesErrorCode.None)
+        logger.error(UpdatesLogMessage.ErrorRecoveryStartupFailed, e, mapOf("error" to e.localizedMessageWithCauseLocalizedMessage()))
         launcher = NoDatabaseLauncher(context, logger, e, procedureScope)
         emergencyLaunchException = e
         notifyController()
@@ -179,6 +179,10 @@ class StartupProcedure(
                 procedureContext.processStateEvent(
                   UpdatesStateEvent.CheckError(exception.localizedMessageWithCauseLocalizedMessage())
                 )
+              }
+              // The machine accepts no events while restarting, so the failure is only logged.
+              UpdatesStateValue.Restarting -> {
+                logger.warn(UpdatesLogMessage.StartupBackgroundUpdateFailed, exception)
               }
               else -> {
                 // .downloading
@@ -308,6 +312,11 @@ class StartupProcedure(
         }
         procedureScope.launch {
           val launchedUpdate = launchedUpdate ?: return@launch
+          logger.warn(
+            UpdatesLogMessage.StartupMarkFailedLaunch,
+            values = mapOf("updateId" to launchedUpdate.loggingId),
+            updateId = launchedUpdate.loggingId
+          )
           database.updateDao().incrementFailedLaunchCount(launchedUpdate)
         }
       }

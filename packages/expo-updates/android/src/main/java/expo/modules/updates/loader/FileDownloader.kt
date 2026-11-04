@@ -16,8 +16,9 @@ import expo.modules.updates.db.UpdatesDatabase
 import expo.modules.updates.db.entity.AssetEntity
 import expo.modules.updates.db.entity.UpdateEntity
 import expo.modules.updates.launcher.NoDatabaseLauncher
-import expo.modules.updates.logging.LoadFailureCodes
 import expo.modules.updates.logging.UpdatesErrorCode
+import expo.modules.updates.logging.LoggedException
+import expo.modules.updates.logging.LoadFailures
 import expo.modules.updates.logging.UpdatesLogger
 import expo.modules.updates.manifest.ManifestMetadata
 import expo.modules.updates.manifest.ResponseHeaderData
@@ -26,6 +27,7 @@ import expo.modules.updates.manifest.ResponsePartInfo
 import expo.modules.updates.manifest.UpdateFactory
 import expo.modules.updates.selectionpolicy.SelectionPolicies
 import expo.modules.updates.utils.AndroidResourceAssetUtils
+import expo.modules.updatesinterface.UpdatesLogMessage
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Cache
 import okhttp3.Headers
@@ -147,10 +149,10 @@ class FileDownloader(
 
             if (!shouldAttemptPatch) {
               logger.warn(
-                "Received patch response even though patch application is disabled; retrying with full asset download",
-                UpdatesErrorCode.AssetsFailedToLoad,
-                requestedUpdateId,
-                asset.key
+                UpdatesLogMessage.RemotePatchFallback,
+                values = mapOf("assetKey" to (asset.key ?: "(no key)"), "reason" to "patchDisabled"),
+                updateId = requestedUpdateId,
+                assetId = asset.key
               )
               return@use fallbackBundleDownload(
                 asset = asset,
@@ -163,10 +165,10 @@ class FileDownloader(
 
             if (!validatePatchResponseMetadata(patchMetadata, launchedUpdate)) {
               logger.warn(
-                "Patch response missing required headers or had mismatched identifiers; retrying with full asset download",
-                UpdatesErrorCode.AssetsFailedToLoad,
-                requestedUpdateId,
-                asset.key
+                UpdatesLogMessage.RemotePatchFallback,
+                values = mapOf("assetKey" to (asset.key ?: "(no key)"), "reason" to "invalidHeaders"),
+                updateId = requestedUpdateId,
+                assetId = asset.key
               )
               return@use fallbackBundleDownload(
                 asset = asset,
@@ -190,10 +192,10 @@ class FileDownloader(
               )
             }.getOrElse { e ->
               logger.warn(
-                "Patch application failed for asset ${asset.key}; retrying with full asset download: ${e.localizedMessageWithCauseLocalizedMessage()}",
-                UpdatesErrorCode.AssetsFailedToLoad,
-                requestedUpdateId,
-                asset.key
+                UpdatesLogMessage.RemotePatchFallback,
+                values = mapOf("assetKey" to (asset.key ?: "(no key)"), "reason" to "applyFailed", "cause" to e.localizedMessageWithCauseLocalizedMessage()),
+                updateId = requestedUpdateId,
+                assetId = asset.key
               )
               fallbackBundleDownload(
                 asset = asset,
@@ -394,12 +396,6 @@ class FileDownloader(
         null
       }
       if (actualBaseHash != null && expectedBaseHash != actualBaseHash) {
-        logger.warn(
-          "Asset hash mismatch for update $currentUpdateId; expected=$expectedBaseHash actual=$actualBaseHash",
-          UpdatesErrorCode.AssetsFailedToLoad,
-          currentUpdateId.toString(),
-          asset.key
-        )
         if (isEmbeddedLaunchAsset) {
           baseFile.delete()
         }
@@ -646,7 +642,8 @@ class FileDownloader(
         val signatureValidationResult = codeSigningConfiguration.validateSignature(
           directiveResponsePartInfo.responsePartHeaderData.signature,
           body.toByteArray(),
-          certificateChainFromManifestResponse
+          certificateChainFromManifestResponse,
+          logger
         )
         if (signatureValidationResult.validationResult == ValidationResult.INVALID) {
           throw IOException("Incorrect signature")
@@ -664,9 +661,8 @@ class FileDownloader(
         }
       }
     } catch (e: Exception) {
-      val message = "Code signing verification failed for directive"
-      logger.error(message, e, UpdatesErrorCode.UpdateCodeSigningError)
-      throw IOException(message, e)
+      logger.error(UpdatesLogMessage.SystemCodeSigningVerificationFailed, e, mapOf("kind" to "directive"))
+      throw LoggedException("Code signing verification failed for directive", e)
     }
 
     return UpdateResponsePart.DirectiveUpdateResponsePart(UpdateDirective.fromJSONString(body))
@@ -698,7 +694,7 @@ class FileDownloader(
     val body = try {
       response.body?.string()
     } catch (e: IOException) {
-      logger.warn("Could not read body of unsuccessful remote update response: ${e.localizedMessageWithCauseLocalizedMessage()}", UpdatesErrorCode.UpdateFailedToLoad)
+      logger.info("Could not read body of unsuccessful remote update response: ${e.localizedMessageWithCauseLocalizedMessage()}", UpdatesErrorCode.UpdateFailedToLoad)
       null
     }
     val summary = body?.takeIf { it.isNotBlank() }?.let { truncateForErrorMessage(it) } ?: "Unknown error"
@@ -813,9 +809,10 @@ class FileDownloader(
       UpdatesUtils.toBase64Url(UpdatesUtils.sha256(path))
     } catch (e: Exception) {
       logger.warn(
-        "Failed to hash existing file for asset ${asset.key}; re-downloading: ${e.message}",
-        UpdatesErrorCode.AssetsFailedToLoad,
-        requestedUpdate?.id?.toString(),
+        UpdatesLogMessage.LocalAssetFileInvalid,
+        e,
+        mapOf("assetKey" to (asset.key ?: "(no key)"), "reason" to "hashFailed"),
+        requestedUpdate?.loggingId,
         asset.key
       )
       return false
@@ -824,10 +821,10 @@ class FileDownloader(
       return true
     }
     logger.warn(
-      "Existing file for asset ${asset.key} did not match expected hash (size ${path.length()} bytes); re-downloading",
-      UpdatesErrorCode.AssetsFailedToLoad,
-      requestedUpdate?.id?.toString(),
-      asset.key
+      UpdatesLogMessage.LocalAssetFileInvalid,
+      values = mapOf("assetKey" to (asset.key ?: "(no key)"), "reason" to "hashMismatch", "size" to path.length().toString()),
+      updateId = requestedUpdate?.loggingId,
+      assetId = asset.key
     )
     return false
   }
@@ -835,8 +832,9 @@ class FileDownloader(
   private fun logAssetDownloadFailure(asset: AssetEntity, requestedUpdate: UpdateEntity?, cause: Exception): IOException {
     val error = IOException("Failed to download asset ${asset.key}", cause)
     logger.warn(
-      error.localizedMessageWithCauseLocalizedMessage(),
-      LoadFailureCodes.forLoadFailure(cause, otherwise = UpdatesErrorCode.AssetsFailedToLoad),
+      LoadFailures.message(cause, UpdatesLogMessage.RemoteAssetDownloadFailed, UpdatesLogMessage.RemoteAssetDownloadUnreachable),
+      cause,
+      mapOf("assetKey" to (asset.key ?: "(no key)")),
       requestedUpdate?.loggingId,
       asset.key
     )
@@ -939,7 +937,8 @@ class FileDownloader(
         val signatureValidationResult = codeSigningConfiguration.validateSignature(
           responsePartHeaderData.signature,
           bodyString.toByteArray(),
-          certificateChainFromManifestResponse
+          certificateChainFromManifestResponse,
+          logger
         )
         if (signatureValidationResult.validationResult == ValidationResult.INVALID) {
           throw IOException("Incorrect signature")
@@ -965,9 +964,8 @@ class FileDownloader(
         }
       }
     } catch (e: Exception) {
-      val message = "Code signing verification failed for manifest"
-      logger.error(message, e, UpdatesErrorCode.UpdateCodeSigningError)
-      throw IOException(message, e)
+      logger.error(UpdatesLogMessage.SystemCodeSigningVerificationFailed, e, mapOf("kind" to "manifest"))
+      throw LoggedException("Code signing verification failed for manifest", e)
     }
 
     val update = UpdateFactory.getUpdate(preManifest, responseHeaderData, extensions, configuration)
@@ -1043,12 +1041,13 @@ class FileDownloader(
       database: UpdatesDatabase,
       configuration: UpdatesConfiguration,
       launchedUpdate: UpdateEntity?,
-      embeddedUpdate: UpdateEntity?
+      embeddedUpdate: UpdateEntity?,
+      logger: UpdatesLogger
     ): JSONObject {
       val extraHeaders =
-        ManifestMetadata.getServerDefinedHeaders(database, configuration) ?: JSONObject()
+        ManifestMetadata.getServerDefinedHeaders(database, configuration, logger) ?: JSONObject()
 
-      ManifestMetadata.getExtraParams(database, configuration)?.let {
+      ManifestMetadata.getExtraParams(database, configuration, logger)?.let {
         extraHeaders.put("Expo-Extra-Params", Dictionary.valueOf(it.mapValues { elem -> StringItem.valueOf(elem.value) }).serialize())
       }
 
